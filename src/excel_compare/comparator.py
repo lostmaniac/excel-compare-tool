@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import List, Dict, Optional, Any
 import pandas as pd
 from openpyxl import load_workbook
+from openpyxl.utils import get_column_letter
 
 
 @dataclass
@@ -72,25 +73,37 @@ class ExcelComparator:
         self.sheet_names_2 = []
 
     def load_files(self) -> None:
-        """Load both Excel files."""
+        """Load both Excel files with original row and column positions."""
         # Load file1
-        wb1 = load_workbook(self.file1_path, read_only=True)
+        wb1 = load_workbook(self.file1_path, read_only=True, data_only=True)
         self.sheet_names_1 = wb1.sheetnames
         for sheet in self.sheet_names_1:
-            # Read with header=0 to use first row as column names
-            # Don't skip rows to preserve original row numbers
-            df = pd.read_excel(self.file1_path, sheet_name=sheet, header=0)
-            # Filter out unnamed columns
-            df = df.loc[:, ~df.columns.str.contains('^Unnamed', case=False, na=False)]
+            # Read all data without header
+            df = pd.read_excel(self.file1_path, sheet_name=sheet, header=None)
+
+            # Generate column names A, B, C, ..., Z, AA, AB, etc.
+            column_names = [get_column_letter(i+1) for i in range(df.shape[1])]
+            df.columns = column_names
+
+            # Set row numbers as index (Excel row numbers, starting from 1)
+            df.index = range(1, len(df) + 1)
+
             self.df1_dict[sheet] = df
 
         # Load file2
-        wb2 = load_workbook(self.file2_path, read_only=True)
+        wb2 = load_workbook(self.file2_path, read_only=True, data_only=True)
         self.sheet_names_2 = wb2.sheetnames
         for sheet in self.sheet_names_2:
-            df = pd.read_excel(self.file2_path, sheet_name=sheet, header=0)
-            # Filter out unnamed columns
-            df = df.loc[:, ~df.columns.str.contains('^Unnamed', case=False, na=False)]
+            # Read all data without header
+            df = pd.read_excel(self.file2_path, sheet_name=sheet, header=None)
+
+            # Generate column names A, B, C, ..., Z, AA, AB, etc.
+            column_names = [get_column_letter(i+1) for i in range(df.shape[1])]
+            df.columns = column_names
+
+            # Set row numbers as index (Excel row numbers, starting from 1)
+            df.index = range(1, len(df) + 1)
+
             self.df2_dict[sheet] = df
 
     def compare(self) -> CompareResult:
@@ -189,8 +202,8 @@ class ExcelComparator:
                 row1 = df1_common.iloc[i]
                 row2 = df2_common.iloc[i]
 
-                # Excel行号：数据从第2行开始（第1行是表头）
-                excel_row_num = i + 2
+                # Excel行号：直接使用index，从1开始
+                excel_row_num = df1_common.index[i]
 
                 for col in common_cols:
                     val1 = row1[col]
@@ -202,24 +215,24 @@ class ExcelComparator:
                     elif pd.isna(val1) and not pd.isna(val2):
                         cell_diffs.append(CellDiff(
                             sheet_name=sheet_name,
-                            row=excel_row_num,  # Excel行号
-                            column=str(col),
+                            row=excel_row_num,  # Excel实际行号
+                            column=str(col),  # Excel列名 A、B、C等
                             old_value=None,
                             new_value=val2
                         ))
                     elif not pd.isna(val1) and pd.isna(val2):
                         cell_diffs.append(CellDiff(
                             sheet_name=sheet_name,
-                            row=excel_row_num,  # Excel行号
-                            column=str(col),
+                            row=excel_row_num,  # Excel实际行号
+                            column=str(col),  # Excel列名
                             old_value=val1,
                             new_value=None
                         ))
                     elif val1 != val2:
                         cell_diffs.append(CellDiff(
                             sheet_name=sheet_name,
-                            row=excel_row_num,  # Excel行号
-                            column=str(col),
+                            row=excel_row_num,  # Excel实际行号
+                            column=str(col),  # Excel列名
                             old_value=val1,
                             new_value=val2
                         ))
@@ -227,7 +240,7 @@ class ExcelComparator:
                 if cell_diffs:
                     row_diffs.append(RowDiff(
                         sheet_name=sheet_name,
-                        row_index=excel_row_num,  # Excel行号
+                        row_index=excel_row_num,  # Excel实际行号
                         diff_type='modified',
                         old_data=row1.to_dict(),
                         new_data=row2.to_dict(),
@@ -237,21 +250,22 @@ class ExcelComparator:
             # Add row count differences
             if added_rows > 0:
                 for i in range(added_rows):
-                    # Excel行号：从common_length+2开始（+1是因为从0索引，+1是因为跳过表头行）
-                    excel_row_num = common_length + i + 2
+                    # Excel行号：直接使用index
+                    excel_row_num = df2_common.index[common_length + i]
                     row_diffs.append(RowDiff(
                         sheet_name=sheet_name,
-                        row_index=excel_row_num,
+                        row_index=excel_row_num,  # Excel实际行号
                         diff_type='added',
                         new_data=df2_common.iloc[common_length + i].to_dict()
                     ))
 
             if deleted_rows > 0:
                 for i in range(deleted_rows):
-                    excel_row_num = common_length + i + 2
+                    # Excel行号：直接使用index
+                    excel_row_num = df1_common.index[common_length + i]
                     row_diffs.append(RowDiff(
                         sheet_name=sheet_name,
-                        row_index=excel_row_num,
+                        row_index=excel_row_num,  # Excel实际行号
                         diff_type='deleted',
                         old_data=df1_common.iloc[common_length + i].to_dict()
                     ))
