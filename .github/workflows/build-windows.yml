@@ -32,7 +32,7 @@ jobs:
 
     - name: Build Windows EXE
       run: |
-        uv run pyinstaller --onefile --windowed --name ExcelCompare --add-data "src\excel_compare;excel_compare" --hidden-import "tkinterdnd2" --clean --noconfirm src\excel_compare\main.py
+        uv run pyinstaller --onefile --windowed --name ExcelCompare --add-data "src\excel_compare;excel_compare" --clean --noconfirm src\excel_compare\main.py
 
     - name: Verify EXE
       shell: pwsh
