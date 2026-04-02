@@ -7,9 +7,7 @@ requires-python = ">=3.12"
 dependencies = [
     "pandas>=2.0.0",
     "openpyxl>=3.1.0",
-    "tkinterdnd2>=0.3.0",
     "pyinstaller>=6.0.0",
-    "nuitka[onefile]>=4.0.7",
 ]
 
 [project.scripts]
