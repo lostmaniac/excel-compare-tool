@@ -1,4 +1,4 @@
-"""差异显示组件。"""
+"""差异显示组件 - 优化版。"""
 
 import tkinter as tk
 from tkinter import ttk, messagebox
@@ -7,7 +7,7 @@ from .comparator import SheetDiff, RowDiff, CellDiff, ColumnDiff
 
 
 class DiffViewer(ttk.Frame):
-    """用于显示Excel文件差异的框架。"""
+    """用于显示Excel文件差异的框架（优化版）。"""
 
     def __init__(self, parent):
         super().__init__(parent)
@@ -105,130 +105,157 @@ class DiffViewer(ttk.Frame):
         # Sheet类型指示器
         type_label = ttk.Label(
             container,
-            text=f"Sheet: {sheet_diff.sheet_name} ({sheet_diff.diff_type.upper()})",
+            text=f"Sheet: {sheet_diff.sheet_name} ({self._get_diff_type_text(sheet_diff.diff_type)})",
             font=('Microsoft YaHei UI', 10, 'bold')
         )
         type_label.pack(anchor=tk.W, pady=(0, 10))
 
-        # 创建差异的可滚动框架
-        scroll_frame = ttk.Frame(container)
-        scroll_frame.pack(fill=tk.BOTH, expand=True)
+        # 使用Treeview显示差异（性能优化）
+        self._create_diff_treeview(container, sheet_diff)
 
-        # 滚动条
-        vsb = ttk.Scrollbar(scroll_frame, orient="vertical")
-        vsb.pack(side=tk.RIGHT, fill=tk.Y)
+    def _get_diff_type_text(self, diff_type: str) -> str:
+        """获取差异类型的中文文本。"""
+        type_map = {
+            'added': '新增',
+            'deleted': '删除',
+            'modified': '修改'
+        }
+        return type_map.get(diff_type, diff_type.upper())
 
-        hsb = ttk.Scrollbar(scroll_frame, orient="horizontal")
-        hsb.pack(side=tk.BOTTOM, fill=tk.X)
-
-        # 内容画布
-        canvas = tk.Canvas(
-            scroll_frame,
-            yscrollcommand=vsb.set,
-            xscrollcommand=hsb.set,
-            bg='white'
-        )
-        canvas.pack(fill=tk.BOTH, expand=True)
-
-        vsb.config(command=canvas.yview)
-        hsb.config(command=canvas.xview)
-
-        # 内容的内部框架
-        inner_frame = ttk.Frame(canvas)
-        canvas.create_window((0, 0), window=inner_frame, anchor="nw")
-
-        # 配置画布以调整内部框架大小
-        inner_frame.bind("<Configure>", lambda e: canvas.configure(
-            scrollregion=canvas.bbox("all")
-        ))
-
-        # 填充差异
-        self._populate_sheet_diffs(inner_frame, sheet_diff)
-
-    def _populate_sheet_diffs(self, parent: ttk.Frame, sheet_diff: SheetDiff) -> None:
+    def _create_diff_treeview(self, parent: ttk.Frame, sheet_diff: SheetDiff) -> None:
         """
-        用sheet差异填充框架。
+        使用Treeview创建差异显示（性能优化版）。
 
         Args:
-            parent: 要添加小部件的父框架
-            sheet_diff: 要显示的SheetDiff对象
+            parent: 父框架
+            sheet_diff: SheetDiff对象
         """
-        row_idx = 0
+        # 创建Notebook用于分类显示
+        category_notebook = ttk.Notebook(parent)
+        category_notebook.pack(fill=tk.BOTH, expand=True)
 
-        # 显示列差异
+        # 列差异标签页
         if sheet_diff.column_diffs:
-            col_frame = ttk.LabelFrame(parent, text="列差异", padding=5)
-            col_frame.pack(fill=tk.X, pady=5)
+            col_tab = ttk.Frame(category_notebook)
+            category_notebook.add(col_tab, text=f"列差异 ({len(sheet_diff.column_diffs)})")
+            self._show_column_diffs(col_tab, sheet_diff.column_diffs)
 
-            headers = ["类型", "列名"]
-            for col, header in enumerate(headers):
-                lbl = ttk.Label(col_frame, text=header, font=('Microsoft YaHei UI', 9, 'bold'))
-                lbl.grid(row=0, column=col, padx=5, pady=2, sticky=tk.W)
-
-            for i, col_diff in enumerate(sheet_diff.column_diffs, start=1):
-                color = '#90EE90' if col_diff.diff_type == 'added' else '#FFB6C1'
-
-                type_lbl = ttk.Label(col_frame, text=col_diff.diff_type.upper())
-                type_lbl.grid(row=i, column=0, padx=5, pady=2, sticky=tk.W)
-
-                name_lbl = ttk.Label(col_frame, text=col_diff.column_name)
-                name_lbl.grid(row=i, column=1, padx=5, pady=2, sticky=tk.W)
-
-            row_idx = 1
-
-        # 显示行差异
+        # 行差异标签页
         if sheet_diff.row_diffs:
-            row_frame = ttk.LabelFrame(parent, text="行差异", padding=5)
-            row_frame.pack(fill=tk.X, pady=5)
+            row_tab = ttk.Frame(category_notebook)
+            category_notebook.add(row_tab, text=f"行差异 ({len(sheet_diff.row_diffs)})")
+            self._show_row_diffs(row_tab, sheet_diff.row_diffs)
 
-            for row_diff in sheet_diff.row_diffs:
-                diff_frame = ttk.Frame(row_frame, relief=tk.SOLID, borderwidth=1)
-                diff_frame.pack(fill=tk.X, pady=2, padx=2)
+        # 如果没有差异
+        if not sheet_diff.column_diffs and not sheet_diff.row_diffs:
+            no_diff_tab = ttk.Frame(category_notebook)
+            category_notebook.add(no_diff_tab, text="差异详情")
+            ttk.Label(no_diff_tab, text="此Sheet没有差异", foreground='green').pack(pady=20)
 
-                # 基于差异类型的颜色
-                bg_color = self._get_diff_color(row_diff.diff_type)
+    def _show_column_diffs(self, parent: ttk.Frame, column_diffs: List[ColumnDiff]) -> None:
+        """显示列差异（使用Treeview）。"""
+        # 创建Treeview
+        tree = ttk.Treeview(parent, columns=('type', 'column'), show='headings', height=20)
+        tree.heading('type', text='类型')
+        tree.heading('column', text='列名')
+        tree.column('type', width=100, anchor='center')
+        tree.column('column', width=200, anchor='w')
 
-                # 行信息
-                info_text = f"行 {row_diff.row_index} - {row_diff.diff_type.upper()}"
-                info_lbl = tk.Label(diff_frame, text=info_text, bg=bg_color, font=('Microsoft YaHei UI', 9, 'bold'))
-                info_lbl.pack(fill=tk.X, padx=5, pady=2)
+        # 添加滚动条
+        vsb = ttk.Scrollbar(parent, orient="vertical", command=tree.yview)
+        hsb = ttk.Scrollbar(parent, orient="horizontal", command=tree.xview)
+        tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
 
-                # 显示修改行的单元格详情
-                if row_diff.diff_type == 'modified' and row_diff.cell_diffs:
-                    details_frame = ttk.Frame(diff_frame)
-                    details_frame.pack(fill=tk.X, padx=10, pady=5)
+        vsb.pack(side=tk.RIGHT, fill=tk.Y)
+        hsb.pack(side=tk.BOTTOM, fill=tk.X)
+        tree.pack(fill=tk.BOTH, expand=True)
 
-                    for cell_diff in row_diff.cell_diffs:
-                        cell_text = f"  {cell_diff.column}: {cell_diff.old_value} → {cell_diff.new_value}"
-                        cell_lbl = tk.Label(details_frame, text=cell_text, bg='#FFFFE0', anchor=tk.W)
-                        cell_lbl.pack(fill=tk.X, pady=1)
+        # 填充数据
+        for col_diff in column_diffs:
+            type_text = self._get_diff_type_text(col_diff.diff_type)
+            item_id = tree.insert('', 'end', values=(type_text, col_diff.column_name))
 
-                # 显示新增/删除行的数据
-                if row_diff.diff_type in ['added', 'deleted']:
-                    data = row_diff.new_data if row_diff.diff_type == 'added' else row_diff.old_data
-                    if data:
-                        data_text = "  数据: " + str(data)
-                        data_lbl = tk.Label(diff_frame, text=data_text, bg=bg_color, wraplength=600, justify=tk.LEFT)
-                        data_lbl.pack(fill=tk.X, padx=5, pady=2)
+            # 设置行颜色
+            if col_diff.diff_type == 'added':
+                tree.tag_configure('added', background='#90EE90')
+                tree.item(item_id, tags=('added',))
+            elif col_diff.diff_type == 'deleted':
+                tree.tag_configure('deleted', background='#FFB6C1')
+                tree.item(item_id, tags=('deleted',))
 
-    def _get_diff_color(self, diff_type: str) -> str:
-        """获取差异类型的背景颜色。"""
-        colors = {
-            'added': '#90EE90',      # 浅绿色
-            'deleted': '#FFB6C1',    # 浅红色
-            'modified': '#FFD700'    # 金色
-        }
-        return colors.get(diff_type, '#FFFFFF')
+    def _show_row_diffs(self, parent: ttk.Frame, row_diffs: List[RowDiff]) -> None:
+        """显示行差异（使用Treeview）。"""
+        # 创建Treeview
+        tree = ttk.Treeview(parent, columns=('type', 'row', 'details'), show='headings', height=20)
+        tree.heading('type', text='类型')
+        tree.heading('row', text='行号')
+        tree.heading('details', text='详情')
+        tree.column('type', width=100, anchor='center')
+        tree.column('row', width=80, anchor='center')
+        tree.column('details', width=400, anchor='w')
 
-    def _show_no_differences(self) -> None:
-        """当未发现差异时显示消息。"""
-        frame = ttk.Frame(self.notebook)
-        self.notebook.add(frame, text="结果")
+        # 添加滚动条
+        vsb = ttk.Scrollbar(parent, orient="vertical", command=tree.yview)
+        hsb = ttk.Scrollbar(parent, orient="horizontal", command=tree.xview)
+        tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
 
-        label = ttk.Label(
-            frame,
-            text="两个文件之间未发现差异！",
-            font=('Microsoft YaHei UI', 12),
-            foreground='green'
-        )
-        label.pack(pady=20)
+        vsb.pack(side=tk.RIGHT, fill=tk.Y)
+        hsb.pack(side=tk.BOTTOM, fill=tk.X)
+        tree.pack(fill=tk.BOTH, expand=True)
+
+        # 填充数据（限制显示数量以提升性能）
+        max_display = 1000  # 最多显示1000行，超出部分显示提示
+        display_count = min(len(row_diffs), max_display)
+
+        for i, row_diff in enumerate(row_diffs[:display_count]):
+            type_text = self._get_diff_type_text(row_diff.diff_type)
+            row_num = str(row_diff.row_index)
+
+            # 构建详情文本
+            if row_diff.diff_type == 'modified' and row_diff.cell_diffs:
+                # 只显示前3个单元格差异
+                cells_text = "; ".join(
+                    f"{cd.column}: {cd.old_value}→{cd.new_value}"
+                    for cd in row_diff.cell_diffs[:3]
+                )
+                if len(row_diff.cell_diffs) > 3:
+                    cells_text += f" 等{len(row_diff.cell_diffs)}个单元格"
+                details = cells_text
+            elif row_diff.diff_type in ['added', 'deleted']:
+                # 显示数据摘要
+                data = row_diff.new_data if row_diff.diff_type == 'added' else row_diff.old_data
+                if data and isinstance(data, dict):
+                    details = "有数据"
+                else:
+                    details = ""
+            else:
+                details = ""
+
+            item_id = tree.insert('', 'end', values=(type_text, row_num, details))
+
+            # 设置行颜色
+            if row_diff.diff_type == 'added':
+                if not hasattr(tree, '_tag_added'):
+                    tree.tag_configure('added', background='#90EE90')
+                    tree._tag_added = True
+                tree.item(item_id, tags=('added',))
+            elif row_diff.diff_type == 'deleted':
+                if not hasattr(tree, '_tag_deleted'):
+                    tree.tag_configure('deleted', background='#FFB6C1')
+                    tree._tag_deleted = True
+                tree.item(item_id, tags=('deleted',))
+            elif row_diff.diff_type == 'modified':
+                if not hasattr(tree, '_tag_modified'):
+                    tree.tag_configure('modified', background='#FFD700')
+                    tree._tag_modified = True
+                tree.item(item_id, tags=('modified',))
+
+        # 如果有更多行未显示，添加提示
+        if len(row_diffs) > max_display:
+            info_frame = ttk.Frame(parent)
+            info_frame.pack(fill=tk.X, pady=10)
+            ttk.Label(
+                info_frame,
+                text=f"⚠️ 共 {len(row_diffs)} 行差异，仅显示前 {max_display} 行以优化性能",
+                foreground='orange'
+            ).pack()
