@@ -52,11 +52,11 @@ class ExcelCompareApp:
         file_frame = ttk.Frame(main_frame)
         file_frame.pack(fill=tk.X, pady=10)
 
-        # 文件1区域
-        self._create_file_section(file_frame, "文件1", 1, self._select_file1)
+        # 源文件区域
+        self._create_file_section(file_frame, "源文件", 1, self._select_file1)
 
-        # 文件2区域
-        self._create_file_section(file_frame, "文件2", 2, self._select_file2)
+        # 新文件区域
+        self._create_file_section(file_frame, "新文件", 2, self._select_file2)
 
         # 控制按钮
         control_frame = ttk.Frame(main_frame)
@@ -140,9 +140,9 @@ class ExcelCompareApp:
         label.config(text=filename, foreground='green')
 
     def _select_file1(self):
-        """处理文件1的选择对话框。"""
+        """处理源文件的选择对话框。"""
         file_path = filedialog.askopenfilename(
-            title="选择第一个Excel文件",
+            title="选择源Excel文件",
             filetypes=[("Excel文件", "*.xlsx *.xls"), ("所有文件", "*.*")]
         )
         if file_path:
@@ -151,9 +151,9 @@ class ExcelCompareApp:
             self._check_ready()
 
     def _select_file2(self):
-        """处理文件2的选择对话框。"""
+        """处理新文件的选择对话框。"""
         file_path = filedialog.askopenfilename(
-            title="选择第二个Excel文件",
+            title="选择新Excel文件",
             filetypes=[("Excel文件", "*.xlsx *.xls"), ("所有文件", "*.*")]
         )
         if file_path:

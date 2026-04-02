@@ -194,6 +194,15 @@ class DiffViewer(ttk.Frame):
 
     def _show_row_diffs(self, parent: ttk.Frame, row_diffs: List[RowDiff]) -> None:
         """显示行差异（使用Treeview，显示坐标，自适应列宽）。"""
+        # 添加行号说明
+        info_label = ttk.Label(
+            parent,
+            text="💡 行号说明：新增/修改行显示新文件的行号，删除行显示源文件的行号",
+            foreground='blue',
+            font=('Microsoft YaHei UI', 9)
+        )
+        info_label.pack(pady=(0, 5), anchor='w')
+
         # 创建Treeview
         tree = ttk.Treeview(parent, columns=('type', 'row', 'column', 'details'), show='headings')
         tree.heading('type', text='类型')
