@@ -77,13 +77,21 @@ class ExcelComparator:
         wb1 = load_workbook(self.file1_path, read_only=True)
         self.sheet_names_1 = wb1.sheetnames
         for sheet in self.sheet_names_1:
-            self.df1_dict[sheet] = pd.read_excel(self.file1_path, sheet_name=sheet)
+            # Read with header=0 to use first row as column names
+            # Don't skip rows to preserve original row numbers
+            df = pd.read_excel(self.file1_path, sheet_name=sheet, header=0)
+            # Filter out unnamed columns
+            df = df.loc[:, ~df.columns.str.contains('^Unnamed', case=False, na=False)]
+            self.df1_dict[sheet] = df
 
         # Load file2
         wb2 = load_workbook(self.file2_path, read_only=True)
         self.sheet_names_2 = wb2.sheetnames
         for sheet in self.sheet_names_2:
-            self.df2_dict[sheet] = pd.read_excel(self.file2_path, sheet_name=sheet)
+            df = pd.read_excel(self.file2_path, sheet_name=sheet, header=0)
+            # Filter out unnamed columns
+            df = df.loc[:, ~df.columns.str.contains('^Unnamed', case=False, na=False)]
+            self.df2_dict[sheet] = df
 
     def compare(self) -> CompareResult:
         """
@@ -181,6 +189,9 @@ class ExcelComparator:
                 row1 = df1_common.iloc[i]
                 row2 = df2_common.iloc[i]
 
+                # Excel行号：数据从第2行开始（第1行是表头）
+                excel_row_num = i + 2
+
                 for col in common_cols:
                     val1 = row1[col]
                     val2 = row2[col]
@@ -191,7 +202,7 @@ class ExcelComparator:
                     elif pd.isna(val1) and not pd.isna(val2):
                         cell_diffs.append(CellDiff(
                             sheet_name=sheet_name,
-                            row=i + 1,  # 1-based index
+                            row=excel_row_num,  # Excel行号
                             column=str(col),
                             old_value=None,
                             new_value=val2
@@ -199,7 +210,7 @@ class ExcelComparator:
                     elif not pd.isna(val1) and pd.isna(val2):
                         cell_diffs.append(CellDiff(
                             sheet_name=sheet_name,
-                            row=i + 1,
+                            row=excel_row_num,  # Excel行号
                             column=str(col),
                             old_value=val1,
                             new_value=None
@@ -207,7 +218,7 @@ class ExcelComparator:
                     elif val1 != val2:
                         cell_diffs.append(CellDiff(
                             sheet_name=sheet_name,
-                            row=i + 1,
+                            row=excel_row_num,  # Excel行号
                             column=str(col),
                             old_value=val1,
                             new_value=val2
@@ -216,7 +227,7 @@ class ExcelComparator:
                 if cell_diffs:
                     row_diffs.append(RowDiff(
                         sheet_name=sheet_name,
-                        row_index=i + 1,
+                        row_index=excel_row_num,  # Excel行号
                         diff_type='modified',
                         old_data=row1.to_dict(),
                         new_data=row2.to_dict(),
@@ -226,20 +237,21 @@ class ExcelComparator:
             # Add row count differences
             if added_rows > 0:
                 for i in range(added_rows):
-                    row_idx = common_length + i + 1
+                    # Excel行号：从common_length+2开始（+1是因为从0索引，+1是因为跳过表头行）
+                    excel_row_num = common_length + i + 2
                     row_diffs.append(RowDiff(
                         sheet_name=sheet_name,
-                        row_index=row_idx,
+                        row_index=excel_row_num,
                         diff_type='added',
                         new_data=df2_common.iloc[common_length + i].to_dict()
                     ))
 
             if deleted_rows > 0:
                 for i in range(deleted_rows):
-                    row_idx = common_length + i + 1
+                    excel_row_num = common_length + i + 2
                     row_diffs.append(RowDiff(
                         sheet_name=sheet_name,
-                        row_index=row_idx,
+                        row_index=excel_row_num,
                         diff_type='deleted',
                         old_data=df1_common.iloc[common_length + i].to_dict()
                     ))

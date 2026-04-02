@@ -153,13 +153,13 @@ class DiffViewer(ttk.Frame):
             ttk.Label(no_diff_tab, text="此Sheet没有差异", foreground='green').pack(pady=20)
 
     def _show_column_diffs(self, parent: ttk.Frame, column_diffs: List[ColumnDiff]) -> None:
-        """显示列差异（使用Treeview）。"""
+        """显示列差异（使用Treeview，自适应列宽）。"""
         # 创建Treeview
         tree = ttk.Treeview(parent, columns=('type', 'column'), show='headings')
         tree.heading('type', text='类型')
         tree.heading('column', text='列名')
-        tree.column('type', width=100, anchor='center')
-        tree.column('column', width=300, anchor='w')
+        tree.column('type', width=80, minwidth=60, anchor='center')
+        tree.column('column', width=200, minwidth=100, stretch=True, anchor='w')
 
         # 添加滚动条
         vsb = ttk.Scrollbar(parent, orient="vertical", command=tree.yview)
@@ -184,17 +184,17 @@ class DiffViewer(ttk.Frame):
                 tree.item(item_id, tags=('deleted',))
 
     def _show_row_diffs(self, parent: ttk.Frame, row_diffs: List[RowDiff]) -> None:
-        """显示行差异（使用Treeview，显示坐标）。"""
+        """显示行差异（使用Treeview，显示坐标，自适应列宽）。"""
         # 创建Treeview
         tree = ttk.Treeview(parent, columns=('type', 'row', 'column', 'details'), show='headings')
         tree.heading('type', text='类型')
         tree.heading('row', text='行号')
         tree.heading('column', text='列名')
         tree.heading('details', text='详情')
-        tree.column('type', width=100, anchor='center')
-        tree.column('row', width=80, anchor='center')
-        tree.column('column', width=150, anchor='w')
-        tree.column('details', width=350, anchor='w')
+        tree.column('type', width=80, minwidth=60, anchor='center')
+        tree.column('row', width=80, minwidth=60, anchor='center')
+        tree.column('column', width=150, minwidth=80, stretch=True, anchor='w')
+        tree.column('details', width=300, minwidth=150, stretch=True, anchor='w')
 
         # 添加滚动条
         vsb = ttk.Scrollbar(parent, orient="vertical", command=tree.yview)
