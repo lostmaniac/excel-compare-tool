@@ -148,6 +148,13 @@ class ExcelComparator:
             summary=summary
         )
 
+    def _is_empty_row(self, row_data):
+        """判断是否为空行（所有值都是NaN、None或空字符串）"""
+        for val in row_data:
+            if pd.notna(val) and val != '' and str(val).strip() != '':
+                return False
+        return True
+
     def _compare_sheet(self, sheet_name: str) -> Optional[SheetDiff]:
         """
         Compare a single sheet between both files.
@@ -197,6 +204,21 @@ class ExcelComparator:
             df1_common_reset = df1_common.reset_index(drop=True)
             df2_common_reset = df2_common.reset_index(drop=True)
 
+            # 过滤掉空行
+            def filter_empty_rows(df_reset, row_nums):
+                """过滤掉空行，返回(过滤后的df, 原始行号列表)"""
+                non_empty_indices = []
+                non_empty_row_nums = []
+                for idx, row_num in zip(df_reset.index, row_nums):
+                    row_data = df_reset.iloc[idx].values
+                    if not self._is_empty_row(row_data):
+                        non_empty_indices.append(idx)
+                        non_empty_row_nums.append(row_num)
+                return df_reset.iloc[non_empty_indices].reset_index(drop=True), non_empty_row_nums
+
+            df1_filtered, df1_filtered_row_nums = filter_empty_rows(df1_common_reset, df1_row_nums)
+            df2_filtered, df2_filtered_row_nums = filter_empty_rows(df2_common_reset, df2_row_nums)
+
             # 将DataFrame的每行转换为可哈希的元组，用于difflib比较
             def row_to_tuple(row):
                 """将Series转换为可哈希的元组，处理NaN值"""
@@ -205,8 +227,8 @@ class ExcelComparator:
                 )
 
             # 生成行元组列表
-            rows1 = [row_to_tuple(row) for _, row in df1_common_reset.iterrows()]
-            rows2 = [row_to_tuple(row) for _, row in df2_common_reset.iterrows()]
+            rows1 = [row_to_tuple(row) for _, row in df1_filtered.iterrows()]
+            rows2 = [row_to_tuple(row) for _, row in df2_filtered.iterrows()]
 
             # 使用difflib.SequenceMatcher进行差异分析
             matcher = difflib.SequenceMatcher(None, rows1, rows2)
@@ -260,9 +282,9 @@ class ExcelComparator:
                     for idx in range(i1, i2):
                         row_diffs.append(RowDiff(
                             sheet_name=sheet_name,
-                            row_index=df1_row_nums[idx],  # 使用原始Excel行号
+                            row_index=df1_filtered_row_nums[idx],  # 使用原始Excel行号
                             diff_type='deleted',
-                            old_data=df1_common_reset.iloc[idx].to_dict()
+                            old_data=df1_filtered.iloc[idx].to_dict()
                         ))
 
                 elif op == 'insert':
@@ -270,9 +292,9 @@ class ExcelComparator:
                     for idx in range(j1, j2):
                         row_diffs.append(RowDiff(
                             sheet_name=sheet_name,
-                            row_index=df2_row_nums[idx],  # 使用原始Excel行号
+                            row_index=df2_filtered_row_nums[idx],  # 使用原始Excel行号
                             diff_type='added',
-                            new_data=df2_common_reset.iloc[idx].to_dict()
+                            new_data=df2_filtered.iloc[idx].to_dict()
                         ))
 
                 elif op == 'replace':
@@ -280,9 +302,9 @@ class ExcelComparator:
                     # 取较小的长度进行对比
                     min_len = min(i2 - i1, j2 - j1)
                     for k in range(min_len):
-                        row1 = df1_common_reset.iloc[i1 + k]
-                        row2 = df2_common_reset.iloc[j1 + k]
-                        excel_row_num = df1_row_nums[i1 + k]  # 使用原始Excel行号
+                        row1 = df1_filtered.iloc[i1 + k]
+                        row2 = df2_filtered.iloc[j1 + k]
+                        excel_row_num = df1_filtered_row_nums[i1 + k]  # 使用原始Excel行号
 
                         cell_diffs = compare_cells(row1, row2, excel_row_num)
                         if cell_diffs:
@@ -299,18 +321,18 @@ class ExcelComparator:
                     for idx in range(i1 + min_len, i2):
                         row_diffs.append(RowDiff(
                             sheet_name=sheet_name,
-                            row_index=df1_row_nums[idx],  # 使用原始Excel行号
+                            row_index=df1_filtered_row_nums[idx],  # 使用原始Excel行号
                             diff_type='deleted',
-                            old_data=df1_common_reset.iloc[idx].to_dict()
+                            old_data=df1_filtered.iloc[idx].to_dict()
                         ))
 
                     # 处理file2多出的行（新增）
                     for idx in range(j1 + min_len, j2):
                         row_diffs.append(RowDiff(
                             sheet_name=sheet_name,
-                            row_index=df2_row_nums[idx],  # 使用原始Excel行号
+                            row_index=df2_filtered_row_nums[idx],  # 使用原始Excel行号
                             diff_type='added',
-                            new_data=df2_common_reset.iloc[idx].to_dict()
+                            new_data=df2_filtered.iloc[idx].to_dict()
                         ))
 
         # Only return SheetDiff if there are differences

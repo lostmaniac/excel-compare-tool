@@ -5,6 +5,7 @@ build/
 dist/
 wheels/
 *.egg-info
+xlsx_test/
 
 # Virtual environments
 .venv
