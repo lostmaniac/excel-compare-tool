@@ -158,7 +158,7 @@ class DiffViewer(ttk.Frame):
         tree = ttk.Treeview(parent, columns=('type', 'column'), show='headings')
         tree.heading('type', text='类型')
         tree.heading('column', text='列名')
-        tree.column('type', width=80, minwidth=60, anchor='center')
+        tree.column('type', width=50, minwidth=50, anchor='center')
         tree.column('column', width=200, minwidth=100, stretch=True, anchor='w')
 
         # 添加滚动条
@@ -191,9 +191,9 @@ class DiffViewer(ttk.Frame):
         tree.heading('row', text='行号')
         tree.heading('column', text='列名')
         tree.heading('details', text='详情')
-        tree.column('type', width=80, minwidth=60, anchor='center')
-        tree.column('row', width=80, minwidth=60, anchor='center')
-        tree.column('column', width=150, minwidth=80, stretch=True, anchor='w')
+        tree.column('type', width=50, minwidth=50, anchor='center')
+        tree.column('row', width=50, minwidth=50, anchor='center')
+        tree.column('column', width=50, minwidth=50, anchor='w')
         tree.column('details', width=300, minwidth=150, stretch=True, anchor='w')
 
         # 添加滚动条
