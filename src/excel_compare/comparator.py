@@ -185,9 +185,17 @@ class ExcelComparator:
         # Only compare rows if there are common columns
         common_cols = list(cols1 & cols2)
         if common_cols:
-            # Reset index for comparison
-            df1_common = df1[common_cols].reset_index(drop=True)
-            df2_common = df2[common_cols].reset_index(drop=True)
+            # 使用原始索引（Excel行号）进行比较
+            df1_common = df1[common_cols]
+            df2_common = df2[common_cols]
+
+            # 保存原始行号（Excel行号）
+            df1_row_nums = df1_common.index.tolist()
+            df2_row_nums = df2_common.index.tolist()
+
+            # 重置索引以便于difflib比较
+            df1_common_reset = df1_common.reset_index(drop=True)
+            df2_common_reset = df2_common.reset_index(drop=True)
 
             # 将DataFrame的每行转换为可哈希的元组，用于difflib比较
             def row_to_tuple(row):
@@ -197,8 +205,8 @@ class ExcelComparator:
                 )
 
             # 生成行元组列表
-            rows1 = [row_to_tuple(row) for _, row in df1_common.iterrows()]
-            rows2 = [row_to_tuple(row) for _, row in df2_common.iterrows()]
+            rows1 = [row_to_tuple(row) for _, row in df1_common_reset.iterrows()]
+            rows2 = [row_to_tuple(row) for _, row in df2_common_reset.iterrows()]
 
             # 使用difflib.SequenceMatcher进行差异分析
             matcher = difflib.SequenceMatcher(None, rows1, rows2)
@@ -252,9 +260,9 @@ class ExcelComparator:
                     for idx in range(i1, i2):
                         row_diffs.append(RowDiff(
                             sheet_name=sheet_name,
-                            row_index=idx + 1,  # Excel实际行号（从1开始）
+                            row_index=df1_row_nums[idx],  # 使用原始Excel行号
                             diff_type='deleted',
-                            old_data=df1_common.iloc[idx].to_dict()
+                            old_data=df1_common_reset.iloc[idx].to_dict()
                         ))
 
                 elif op == 'insert':
@@ -262,9 +270,9 @@ class ExcelComparator:
                     for idx in range(j1, j2):
                         row_diffs.append(RowDiff(
                             sheet_name=sheet_name,
-                            row_index=idx + 1,  # Excel实际行号
+                            row_index=df2_row_nums[idx],  # 使用原始Excel行号
                             diff_type='added',
-                            new_data=df2_common.iloc[idx].to_dict()
+                            new_data=df2_common_reset.iloc[idx].to_dict()
                         ))
 
                 elif op == 'replace':
@@ -272,9 +280,9 @@ class ExcelComparator:
                     # 取较小的长度进行对比
                     min_len = min(i2 - i1, j2 - j1)
                     for k in range(min_len):
-                        row1 = df1_common.iloc[i1 + k]
-                        row2 = df2_common.iloc[j1 + k]
-                        excel_row_num = i1 + k + 1  # 使用file1的行号
+                        row1 = df1_common_reset.iloc[i1 + k]
+                        row2 = df2_common_reset.iloc[j1 + k]
+                        excel_row_num = df1_row_nums[i1 + k]  # 使用原始Excel行号
 
                         cell_diffs = compare_cells(row1, row2, excel_row_num)
                         if cell_diffs:
@@ -291,18 +299,18 @@ class ExcelComparator:
                     for idx in range(i1 + min_len, i2):
                         row_diffs.append(RowDiff(
                             sheet_name=sheet_name,
-                            row_index=idx + 1,
+                            row_index=df1_row_nums[idx],  # 使用原始Excel行号
                             diff_type='deleted',
-                            old_data=df1_common.iloc[idx].to_dict()
+                            old_data=df1_common_reset.iloc[idx].to_dict()
                         ))
 
                     # 处理file2多出的行（新增）
                     for idx in range(j1 + min_len, j2):
                         row_diffs.append(RowDiff(
                             sheet_name=sheet_name,
-                            row_index=idx + 1,
+                            row_index=df2_row_nums[idx],  # 使用原始Excel行号
                             diff_type='added',
-                            new_data=df2_common.iloc[idx].to_dict()
+                            new_data=df2_common_reset.iloc[idx].to_dict()
                         ))
 
         # Only return SheetDiff if there are differences
