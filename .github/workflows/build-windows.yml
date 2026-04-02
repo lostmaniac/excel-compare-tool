@@ -1,0 +1,60 @@
+name: Build Windows EXE
+
+on:
+  workflow_dispatch:  # Allow manual trigger
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'src/**'
+      - 'pyproject.toml'
+      - '.github/workflows/build-windows.yml'
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup uv
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Install uv
+      run: |
+        pip install uv
+
+    - name: Install dependencies
+      run: |
+        uv sync
+
+    - name: Build Windows EXE
+      run: |
+        uv run pyinstaller --onefile --windowed --name ExcelCompare --add-data "src\excel_compare;excel_compare" --hidden-import "tkinterdnd2" --clean --noconfirm src\excel_compare\main.py
+
+    - name: Verify EXE
+      run: |
+        if exist "dist\ExcelCompare.exe" (
+          echo "Build successful!"
+          dir "dist\ExcelCompare.exe"
+        ) else (
+          echo "Build failed!"
+          exit 1
+        )
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ExcelCompare-Windows-EXE
+        path: dist/ExcelCompare.exe
+        retention-days: 90
+
+    - name: Create release (if on tag)
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v1
+      with:
+        files: dist/ExcelCompare.exe
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

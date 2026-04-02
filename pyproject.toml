@@ -1,0 +1,16 @@
+[project]
+name = "excel-compare-tool"
+version = "0.1.0"
+description = "A GUI tool to compare differences between two Excel files"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "pandas>=2.0.0",
+    "openpyxl>=3.1.0",
+    "tkinterdnd2>=0.3.0",
+    "pyinstaller>=6.0.0",
+    "nuitka[onefile]>=4.0.7",
+]
+
+[project.scripts]
+excel-compare = "excel_compare.main:main"
