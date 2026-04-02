@@ -1,32 +1,32 @@
-"""Main GUI application for Excel file comparison."""
+"""Excel文件对比工具主程序。"""
 
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import os
 import sys
 
-# Handle both package and standalone execution
+# 处理包内导入和独立运行
 try:
     from .comparator import ExcelComparator
     from .diff_view import DiffViewer
 except ImportError:
-    # Fallback for PyInstaller standalone execution
+    # PyInstaller 打包后的备用导入
     from excel_compare.comparator import ExcelComparator
     from excel_compare.diff_view import DiffViewer
 
 
 class ExcelCompareApp:
-    """Main application class for Excel file comparison."""
+    """Excel文件对比工具主应用类。"""
 
     def __init__(self, root: tk.Tk):
         """
-        Initialize the application.
+        初始化应用程序。
 
         Args:
-            root: The root Tk window
+            root: Tk 根窗口
         """
         self.root = root
-        self.root.title("Excel File Compare Tool")
+        self.root.title("Excel文件对比工具")
         self.root.geometry("1000x700")
 
         self.file1_path = None
@@ -35,36 +35,36 @@ class ExcelCompareApp:
         self._setup_ui()
 
     def _setup_ui(self):
-        """Setup the user interface."""
-        # Create main container
+        """设置用户界面。"""
+        # 创建主容器
         main_frame = ttk.Frame(self.root, padding="10")
         main_frame.pack(fill=tk.BOTH, expand=True)
 
-        # Title
+        # 标题
         title_label = ttk.Label(
             main_frame,
-            text="Excel File Compare Tool",
-            font=('Arial', 16, 'bold')
+            text="Excel文件对比工具",
+            font=('Microsoft YaHei UI', 16, 'bold')
         )
         title_label.pack(pady=(0, 10))
 
-        # File selection frame
+        # 文件选择区域
         file_frame = ttk.Frame(main_frame)
         file_frame.pack(fill=tk.X, pady=10)
 
-        # File 1 section
-        self._create_file_section(file_frame, "File 1", 0, self._on_file1_drop, self._select_file1)
+        # 文件1区域
+        self._create_file_section(file_frame, "文件1", 1, self._select_file1)
 
-        # File 2 section
-        self._create_file_section(file_frame, "File 2", 1, self._on_file2_drop, self._select_file2)
+        # 文件2区域
+        self._create_file_section(file_frame, "文件2", 2, self._select_file2)
 
-        # Control buttons
+        # 控制按钮
         control_frame = ttk.Frame(main_frame)
         control_frame.pack(fill=tk.X, pady=10)
 
         self.compare_btn = ttk.Button(
             control_frame,
-            text="Start Comparison",
+            text="开始对比",
             command=self._start_comparison,
             state=tk.DISABLED
         )
@@ -72,20 +72,20 @@ class ExcelCompareApp:
 
         clear_btn = ttk.Button(
             control_frame,
-            text="Clear All",
+            text="清除全部",
             command=self._clear_all
         )
         clear_btn.pack(side=tk.LEFT, padx=5)
 
-        # Status label
+        # 状态标签
         self.status_label = ttk.Label(
             control_frame,
-            text="Ready - Select Excel files to compare",
+            text="就绪 - 请选择要对比的Excel文件",
             foreground='gray'
         )
         self.status_label.pack(side=tk.LEFT, padx=20)
 
-        # Result viewer
+        # 结果查看器
         self.diff_viewer = DiffViewer(main_frame)
         self.diff_viewer.pack(fill=tk.BOTH, expand=True, pady=10)
 
@@ -93,74 +93,57 @@ class ExcelCompareApp:
         self,
         parent: ttk.Frame,
         title: str,
-        row: int,
-        drop_handler,
+        file_num: int,
         select_handler
     ):
         """
-        Create a file selection section.
+        创建文件选择区域。
 
         Args:
-            parent: Parent frame
-            title: Section title
-            row: Grid row number
-            drop_handler: Handler for drop events
-            select_handler: Handler for select button
+            parent: 父框架
+            title: 区域标题
+            file_num: 文件编号（1或2）
+            select_handler: 选择文件的处理函数
         """
-        # Frame for this file
+        # 创建此文件的框架
         section = ttk.Frame(parent)
         section.pack(fill=tk.X, pady=5)
 
-        # Label
-        label = ttk.Label(section, text=title, font=('Arial', 10, 'bold'), width=8)
+        # 标签
+        label = ttk.Label(section, text=title, font=('Microsoft YaHei UI', 10, 'bold'), width=8)
         label.pack(side=tk.LEFT, padx=5)
 
-        # Drop zone frame
-        drop_frame = tk.Frame(
-            section,
-            height=40,
-            borderwidth=2,
-            relief=tk.GROOVE,
-            bg='#f0f0f0'
+        # 创建带按钮的区域
+        container = tk.Frame(section)
+        container.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
+
+        # 选择按钮
+        btn = ttk.Button(
+            container,
+            text="点击选择文件",
+            command=select_handler
         )
-        drop_frame.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
+        btn.pack(fill=tk.X)
 
-        # File path label
-        path_label = ttk.Label(drop_frame, text="Click to select file")
-        path_label.pack(expand=True, padx=10)
-        setattr(self, f'file{row + 1}_label', path_label)
-
-        # Click to select
-        drop_frame.bind('<Button-1>', lambda e: select_handler())
-
-    def _on_file1_drop(self, file_path: str):
-        """Handle file drop for file 1."""
-        if file_path and os.path.exists(file_path) and file_path.lower().endswith(('.xlsx', '.xls')):
-            self.file1_path = file_path
-            self._update_file_label(self.file1_label, file_path)
-            self._check_ready()
-
-    def _on_file2_drop(self, file_path: str):
-        """Handle file drop for file 2."""
-        if file_path and os.path.exists(file_path) and file_path.lower().endswith(('.xlsx', '.xls')):
-            self.file2_path = file_path
-            self._update_file_label(self.file2_label, file_path)
-            self._check_ready()
+        # 文件路径标签
+        path_label = ttk.Label(container, text="未选择文件", foreground='gray')
+        path_label.pack(fill=tk.X, pady=5)
+        setattr(self, f'file{file_num}_label', path_label)
 
     def _update_file_label(self, label: ttk.Label, file_path: str):
-        """Update the file path label."""
-        # Get just the filename
+        """更新文件路径标签。"""
+        # 只获取文件名
         filename = os.path.basename(file_path)
-        # Truncate if too long
+        # 如果太长则截断
         if len(filename) > 50:
             filename = '...' + filename[-47:]
         label.config(text=filename, foreground='green')
 
     def _select_file1(self):
-        """Handle file selection dialog for file 1."""
+        """处理文件1的选择对话框。"""
         file_path = filedialog.askopenfilename(
-            title="Select First Excel File",
-            filetypes=[("Excel files", "*.xlsx *.xls")]
+            title="选择第一个Excel文件",
+            filetypes=[("Excel文件", "*.xlsx *.xls"), ("所有文件", "*.*")]
         )
         if file_path:
             self.file1_path = file_path
@@ -168,10 +151,10 @@ class ExcelCompareApp:
             self._check_ready()
 
     def _select_file2(self):
-        """Handle file selection dialog for file 2."""
+        """处理文件2的选择对话框。"""
         file_path = filedialog.askopenfilename(
-            title="Select Second Excel File",
-            filetypes=[("Excel files", "*.xlsx *.xls")]
+            title="选择第二个Excel文件",
+            filetypes=[("Excel文件", "*.xlsx *.xls"), ("所有文件", "*.*")]
         )
         if file_path:
             self.file2_path = file_path
@@ -179,60 +162,60 @@ class ExcelCompareApp:
             self._check_ready()
 
     def _check_ready(self):
-        """Check if both files are selected and enable/disable compare button."""
+        """检查是否两个文件都已选择，启用/禁用对比按钮。"""
         if self.file1_path and self.file2_path:
             self.compare_btn.config(state=tk.NORMAL)
-            self.status_label.config(text="Files selected - Ready to compare")
+            self.status_label.config(text="文件已选择 - 可以开始对比")
         else:
             self.compare_btn.config(state=tk.DISABLED)
-            self.status_label.config(text="Select both files to compare")
+            self.status_label.config(text="请选择两个要对比的文件")
 
     def _start_comparison(self):
-        """Start the comparison process."""
+        """开始对比过程。"""
         if not self.file1_path or not self.file2_path:
-            messagebox.showwarning("Warning", "Please select both files first!")
+            messagebox.showwarning("警告", "请先选择两个文件！")
             return
 
         try:
-            self.status_label.config(text="Comparing files... Please wait...")
+            self.status_label.config(text="正在对比文件... 请稍候...")
             self.root.update()
 
-            # Create comparator and compare
+            # 创建对比器并对比
             comparator = ExcelComparator(self.file1_path, self.file2_path)
             result = comparator.compare()
 
-            # Display results
+            # 显示结果
             self.diff_viewer.show_differences(result)
 
-            # Update status
+            # 更新状态
             if result.summary['total_differences'] > 0:
                 self.status_label.config(
-                    text=f"Comparison complete - Found {result.summary['total_differences']} differences"
+                    text=f"对比完成 - 发现 {result.summary['total_differences']} 处差异"
                 )
             else:
                 self.status_label.config(
-                    text="Comparison complete - No differences found!",
+                    text="对比完成 - 未发现差异！",
                     foreground='green'
                 )
 
         except Exception as e:
-            messagebox.showerror("Error", f"Error comparing files:\n{str(e)}")
-            self.status_label.config(text="Error occurred during comparison", foreground='red')
+            messagebox.showerror("错误", f"对比文件时出错:\n{str(e)}")
+            self.status_label.config(text="对比过程中发生错误", foreground='red')
 
     def _clear_all(self):
-        """Clear all selections and results."""
+        """清除所有选择和结果。"""
         self.file1_path = None
         self.file2_path = None
 
-        self.file1_label.config(text="Click to select file", foreground='black')
-        self.file2_label.config(text="Click to select file", foreground='black')
+        self.file1_label.config(text="未选择文件", foreground='gray')
+        self.file2_label.config(text="未选择文件", foreground='gray')
 
         self.compare_btn.config(state=tk.DISABLED)
-        self.status_label.config(text="Ready - Select Excel files to compare", foreground='gray')
+        self.status_label.config(text="就绪 - 请选择要对比的Excel文件", foreground='gray')
 
-        # Clear results
+        # 清除结果
         self.diff_viewer = DiffViewer(self.root.winfo_children()[0])
-        # Need to repack
+        # 需要重新打包
         main_frame = self.root.winfo_children()[0]
         for widget in main_frame.winfo_children():
             if isinstance(widget, DiffViewer):
@@ -241,8 +224,8 @@ class ExcelCompareApp:
 
 
 def main():
-    """Main entry point."""
-    # Configure tkinter for HiDPI displays
+    """主入口点。"""
+    # 配置tkinter以支持高DPI显示
     try:
         from ctypes import windll
         windll.shcore.SetProcessDpiAwareness(1)
