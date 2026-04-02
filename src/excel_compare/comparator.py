@@ -191,52 +191,39 @@ class ExcelComparator:
 
         # Only compare rows if there are common columns
         common_cols = list(cols1 & cols2)
-        if common_cols:
+        if common_cols and 'B' in common_cols:  # 需要B列（场所名称）作为唯一标识符进行匹配
             # 使用原始索引（Excel行号）进行比较
             df1_common = df1[common_cols]
             df2_common = df2[common_cols]
 
-            # 保存原始行号（Excel行号）
-            df1_row_nums = df1_common.index.tolist()
-            df2_row_nums = df2_common.index.tolist()
+            # 基于场所名称（B列）进行匹配，而不是按行顺序比较
+            # 收集file1中所有有效行（有场所名称的行）
+            rows_by_name1 = {}  # {场所名称: (行号, 行数据)}
+            for excel_row_num in df1_common.index:
+                row_data = df1_common.loc[excel_row_num]
+                site_name = row_data['B']
+                if pd.notna(site_name) and site_name != '' and str(site_name).strip() != '':
+                    rows_by_name1[str(site_name).strip()] = (excel_row_num, row_data)
 
-            # 重置索引以便于difflib比较
-            df1_common_reset = df1_common.reset_index(drop=True)
-            df2_common_reset = df2_common.reset_index(drop=True)
+            # 收集file2中所有有效行（有场所名称的行）
+            rows_by_name2 = {}  # {场所名称: (行号, 行数据)}
+            for excel_row_num in df2_common.index:
+                row_data = df2_common.loc[excel_row_num]
+                site_name = row_data['B']
+                if pd.notna(site_name) and site_name != '' and str(site_name).strip() != '':
+                    rows_by_name2[str(site_name).strip()] = (excel_row_num, row_data)
 
-            # 过滤掉空行
-            def filter_empty_rows(df_reset, row_nums):
-                """过滤掉空行，返回(过滤后的df, 原始行号列表)"""
-                non_empty_indices = []
-                non_empty_row_nums = []
-                for idx, row_num in zip(df_reset.index, row_nums):
-                    row_data = df_reset.iloc[idx].values
-                    if not self._is_empty_row(row_data):
-                        non_empty_indices.append(idx)
-                        non_empty_row_nums.append(row_num)
-                return df_reset.iloc[non_empty_indices].reset_index(drop=True), non_empty_row_nums
+            # 获取所有场所名称
+            all_names = set(rows_by_name1.keys()) | set(rows_by_name2.keys())
 
-            df1_filtered, df1_filtered_row_nums = filter_empty_rows(df1_common_reset, df1_row_nums)
-            df2_filtered, df2_filtered_row_nums = filter_empty_rows(df2_common_reset, df2_row_nums)
-
-            # 将DataFrame的每行转换为可哈希的元组，用于difflib比较
-            def row_to_tuple(row):
-                """将Series转换为可哈希的元组，处理NaN值"""
-                return tuple(
-                    (val if not pd.isna(val) else None) for val in row
-                )
-
-            # 生成行元组列表
-            rows1 = [row_to_tuple(row) for _, row in df1_filtered.iterrows()]
-            rows2 = [row_to_tuple(row) for _, row in df2_filtered.iterrows()]
-
-            # 使用difflib.SequenceMatcher进行差异分析
-            matcher = difflib.SequenceMatcher(None, rows1, rows2)
-
-            def compare_cells(row1, row2, excel_row_num):
+            # 对比单元格的函数
+            def compare_cells(row1, row2, excel_row_num2):
                 """对比两行的单元格差异"""
                 cell_diffs = []
                 for col in common_cols:
+                    # 跳过序号列（A列）和场所名称列（B列）
+                    if col == 'A' or col == 'B':
+                        continue
                     val1 = row1[col]
                     val2 = row2[col]
                     if pd.isna(val1) and pd.isna(val2):
@@ -244,7 +231,7 @@ class ExcelComparator:
                     elif pd.isna(val1) and not pd.isna(val2):
                         cell_diffs.append(CellDiff(
                             sheet_name=sheet_name,
-                            row=excel_row_num,
+                            row=excel_row_num2,
                             column=str(col),
                             old_value=None,
                             new_value=val2
@@ -252,7 +239,7 @@ class ExcelComparator:
                     elif not pd.isna(val1) and pd.isna(val2):
                         cell_diffs.append(CellDiff(
                             sheet_name=sheet_name,
-                            row=excel_row_num,
+                            row=excel_row_num2,
                             column=str(col),
                             old_value=val1,
                             new_value=None
@@ -260,79 +247,52 @@ class ExcelComparator:
                     elif val1 != val2:
                         cell_diffs.append(CellDiff(
                             sheet_name=sheet_name,
-                            row=excel_row_num,
+                            row=excel_row_num2,
                             column=str(col),
                             old_value=val1,
                             new_value=val2
                         ))
                 return cell_diffs
 
-            # 遍历所有操作序列
-            for op, i1, i2, j1, j2 in matcher.get_opcodes():
-                # op: 操作类型
-                # i1, i2: file1的行索引范围 [i1, i2)
-                # j1, j2: file2的行索引范围 [j1, j2)
+            # 按场所名称排序遍历
+            for site_name in sorted(all_names):
+                in_file1 = site_name in rows_by_name1
+                in_file2 = site_name in rows_by_name2
 
-                if op == 'equal':
-                    # 完全相同的行，无需记录
-                    continue
+                if not in_file1 and in_file2:
+                    # 新增的行
+                    excel_row_num, row_data = rows_by_name2[site_name]
+                    row_diffs.append(RowDiff(
+                        sheet_name=sheet_name,
+                        row_index=excel_row_num,
+                        diff_type='added',
+                        new_data=row_data.to_dict()
+                    ))
 
-                elif op == 'delete':
-                    # file1中删除了 [i1, i2) 的行
-                    for idx in range(i1, i2):
+                elif in_file1 and not in_file2:
+                    # 删除的行
+                    excel_row_num, row_data = rows_by_name1[site_name]
+                    row_diffs.append(RowDiff(
+                        sheet_name=sheet_name,
+                        row_index=excel_row_num,
+                        diff_type='deleted',
+                        old_data=row_data.to_dict()
+                    ))
+
+                elif in_file1 and in_file2:
+                    # 两个文件都有此场所，比较内容
+                    excel_row_num1, row_data1 = rows_by_name1[site_name]
+                    excel_row_num2, row_data2 = rows_by_name2[site_name]
+
+                    cell_diffs = compare_cells(row_data1, row_data2, excel_row_num2)
+                    if cell_diffs:
                         row_diffs.append(RowDiff(
                             sheet_name=sheet_name,
-                            row_index=df1_filtered_row_nums[idx],  # 使用原始Excel行号
-                            diff_type='deleted',
-                            old_data=df1_filtered.iloc[idx].to_dict()
-                        ))
-
-                elif op == 'insert':
-                    # file2中新增了 [j1, j2) 的行
-                    for idx in range(j1, j2):
-                        row_diffs.append(RowDiff(
-                            sheet_name=sheet_name,
-                            row_index=df2_filtered_row_nums[idx],  # 使用原始Excel行号
-                            diff_type='added',
-                            new_data=df2_filtered.iloc[idx].to_dict()
-                        ))
-
-                elif op == 'replace':
-                    # [i1, i2) 的行被替换为 [j1, j2) 的行
-                    # 取较小的长度进行对比
-                    min_len = min(i2 - i1, j2 - j1)
-                    for k in range(min_len):
-                        row1 = df1_filtered.iloc[i1 + k]
-                        row2 = df2_filtered.iloc[j1 + k]
-                        excel_row_num = df1_filtered_row_nums[i1 + k]  # 使用原始Excel行号
-
-                        cell_diffs = compare_cells(row1, row2, excel_row_num)
-                        if cell_diffs:
-                            row_diffs.append(RowDiff(
-                                sheet_name=sheet_name,
-                                row_index=excel_row_num,
-                                diff_type='modified',
-                                old_data=row1.to_dict(),
-                                new_data=row2.to_dict(),
-                                cell_diffs=cell_diffs
-                            ))
-
-                    # 处理file1多出的行（删除）
-                    for idx in range(i1 + min_len, i2):
-                        row_diffs.append(RowDiff(
-                            sheet_name=sheet_name,
-                            row_index=df1_filtered_row_nums[idx],  # 使用原始Excel行号
-                            diff_type='deleted',
-                            old_data=df1_filtered.iloc[idx].to_dict()
-                        ))
-
-                    # 处理file2多出的行（新增）
-                    for idx in range(j1 + min_len, j2):
-                        row_diffs.append(RowDiff(
-                            sheet_name=sheet_name,
-                            row_index=df2_filtered_row_nums[idx],  # 使用原始Excel行号
-                            diff_type='added',
-                            new_data=df2_filtered.iloc[idx].to_dict()
+                            row_index=excel_row_num2,  # 使用file2的行号
+                            diff_type='modified',
+                            old_data=row_data1.to_dict(),
+                            new_data=row_data2.to_dict(),
+                            cell_diffs=cell_diffs
                         ))
 
         # Only return SheetDiff if there are differences
