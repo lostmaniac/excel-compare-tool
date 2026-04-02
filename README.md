@@ -7,7 +7,6 @@
 - 支持对比两个.xlsx/.xls文件
 - 支持多个sheets对比
 - 对比所有列和行的差异
-- 支持文件拖拽操作
 - 可视化显示差异结果
 - 跨平台编译为Windows exe单文件
 
@@ -50,15 +49,14 @@ uv run python build.py
 ```bash
 uv run pyinstaller --onefile --windowed --name ExcelCompare \
   --add-data "src/excel_compare;excel_compare" \
-  --hidden-import "tkinterdnd2" \
   src/excel_compare/main.py
 ```
 
 ## 使用方法
 
 1. 启动应用程序后，会看到一个主窗口
-2. 拖拽第一个Excel文件到"File 1"区域，或点击区域选择文件
-3. 拖拽第二个Excel文件到"File 2"区域，或点击区域选择文件
+2. 点击"File 1"区域选择第一个Excel文件
+3. 点击"File 2"区域选择第二个Excel文件
 4. 点击"Start Comparison"按钮开始对比
 5. 查看结果：
    - Summary标签页显示整体差异统计
@@ -84,13 +82,12 @@ excel-compare-tool/
 
 ## 技术栈
 
-- **GUI框架**: tkinter (内置) + tkinterdnd2 (拖拽支持)
+- **GUI框架**: tkinter (内置)
 - **Excel处理**: pandas + openpyxl
 - **打包工具**: PyInstaller
 - **包管理**: uv
 
 ## 注意事项
 
-- 拖拽功能在打包为exe时需要正确包含tkinterdnd2的依赖
 - 在Linux/WSL环境下测试GUI可能需要X服务器支持
 - 打包的exe文件较大，因为包含了Python运行时和所有依赖
