@@ -2,7 +2,6 @@
 
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
-import tkinterdnd2 as tkdnd
 import os
 import sys
 
@@ -37,9 +36,6 @@ class ExcelCompareApp:
 
     def _setup_ui(self):
         """Setup the user interface."""
-        # Configure root for drag and drop
-        tkdnd.TkDnD(self.root)
-
         # Create main container
         main_frame = ttk.Frame(self.root, padding="10")
         main_frame.pack(fill=tk.BOTH, expand=True)
@@ -84,7 +80,7 @@ class ExcelCompareApp:
         # Status label
         self.status_label = ttk.Label(
             control_frame,
-            text="Ready - Drag and drop Excel files to compare",
+            text="Ready - Select Excel files to compare",
             foreground='gray'
         )
         self.status_label.pack(side=tk.LEFT, padx=20)
@@ -130,33 +126,26 @@ class ExcelCompareApp:
         drop_frame.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
 
         # File path label
-        path_label = ttk.Label(drop_frame, text="Drop file here or click to select")
+        path_label = ttk.Label(drop_frame, text="Click to select file")
         path_label.pack(expand=True, padx=10)
         setattr(self, f'file{row + 1}_label', path_label)
-
-        # Register for drag and drop
-        drop_frame.register_drop_target('*', drop_handler)
 
         # Click to select
         drop_frame.bind('<Button-1>', lambda e: select_handler())
 
-    def _on_file1_drop(self, event):
+    def _on_file1_drop(self, file_path: str):
         """Handle file drop for file 1."""
-        if event.data:
-            file_path = event.data.strip('{}')
-            if os.path.exists(file_path) and file_path.lower().endswith(('.xlsx', '.xls')):
-                self.file1_path = file_path
-                self._update_file_label(self.file1_label, file_path)
-                self._check_ready()
+        if file_path and os.path.exists(file_path) and file_path.lower().endswith(('.xlsx', '.xls')):
+            self.file1_path = file_path
+            self._update_file_label(self.file1_label, file_path)
+            self._check_ready()
 
-    def _on_file2_drop(self, event):
+    def _on_file2_drop(self, file_path: str):
         """Handle file drop for file 2."""
-        if event.data:
-            file_path = event.data.strip('{}')
-            if os.path.exists(file_path) and file_path.lower().endswith(('.xlsx', '.xls')):
-                self.file2_path = file_path
-                self._update_file_label(self.file2_label, file_path)
-                self._check_ready()
+        if file_path and os.path.exists(file_path) and file_path.lower().endswith(('.xlsx', '.xls')):
+            self.file2_path = file_path
+            self._update_file_label(self.file2_label, file_path)
+            self._check_ready()
 
     def _update_file_label(self, label: ttk.Label, file_path: str):
         """Update the file path label."""
@@ -235,11 +224,11 @@ class ExcelCompareApp:
         self.file1_path = None
         self.file2_path = None
 
-        self.file1_label.config(text="Drop file here or click to select", foreground='black')
-        self.file2_label.config(text="Drop file here or click to select", foreground='black')
+        self.file1_label.config(text="Click to select file", foreground='black')
+        self.file2_label.config(text="Click to select file", foreground='black')
 
         self.compare_btn.config(state=tk.DISABLED)
-        self.status_label.config(text="Ready - Drag and drop Excel files to compare", foreground='gray')
+        self.status_label.config(text="Ready - Select Excel files to compare", foreground='gray')
 
         # Clear results
         self.diff_viewer = DiffViewer(self.root.winfo_children()[0])
@@ -260,7 +249,7 @@ def main():
     except:
         pass
 
-    root = tkdnd.Tk()
+    root = tk.Tk()
     app = ExcelCompareApp(root)
     root.mainloop()
 
