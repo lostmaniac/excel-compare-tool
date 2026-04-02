@@ -47,7 +47,16 @@ class DiffViewer(ttk.Frame):
             for sheet_diff in diff_results.sheet_diffs:
                 self._add_sheet_tab(sheet_diff)
         else:
-            self._show_no_differences()
+            # 显示无差异的标签页
+            frame = ttk.Frame(self.notebook)
+            self.notebook.add(frame, text="无差异")
+            label = ttk.Label(
+                frame,
+                text="✓ 两个文件完全一致，没有发现任何差异！",
+                font=('Microsoft YaHei UI', 14),
+                foreground='green'
+            )
+            label.pack(pady=50)
 
     def _show_summary(self, diff_results) -> None:
         """显示所有差异的摘要。"""
