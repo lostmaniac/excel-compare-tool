@@ -5,6 +5,7 @@ from typing import List, Dict, Optional, Any
 import pandas as pd
 from openpyxl import load_workbook
 from openpyxl.utils import get_column_letter
+import difflib
 
 
 @dataclass
@@ -188,33 +189,24 @@ class ExcelComparator:
             df1_common = df1[common_cols].reset_index(drop=True)
             df2_common = df2[common_cols].reset_index(drop=True)
 
-            len1, len2 = len(df1_common), len(df2_common)
+            # 将DataFrame的每行转换为可哈希的元组，用于difflib比较
+            def row_to_tuple(row):
+                """将Series转换为可哈希的元组，处理NaN值"""
+                return tuple(
+                    (val if not pd.isna(val) else None) for val in row
+                )
 
-            # 滑动窗口算法对比行
-            i = 0  # 文件1索引
-            j = 0  # 文件2索引
-            max_lookahead = 10  # 前瞻行数
+            # 生成行元组列表
+            rows1 = [row_to_tuple(row) for _, row in df1_common.iterrows()]
+            rows2 = [row_to_tuple(row) for _, row in df2_common.iterrows()]
 
-            def rows_equal(row1, row2, cols):
-                """判断两行是否所有公共列都相等"""
-                for col in cols:
-                    val1 = row1[col]
-                    val2 = row2[col]
-                    # 处理NaN值：两个NaN视为相等
-                    if pd.isna(val1) and pd.isna(val2):
-                        continue
-                    # 一个是NaN另一个不是 → 不相等
-                    elif pd.isna(val1) or pd.isna(val2):
-                        return False
-                    # 值不相等
-                    elif val1 != val2:
-                        return False
-                return True
+            # 使用difflib.SequenceMatcher进行差异分析
+            matcher = difflib.SequenceMatcher(None, rows1, rows2)
 
-            def compare_cells(row1, row2, cols):
+            def compare_cells(row1, row2, excel_row_num):
                 """对比两行的单元格差异"""
                 cell_diffs = []
-                for col in cols:
+                for col in common_cols:
                     val1 = row1[col]
                     val2 = row2[col]
                     if pd.isna(val1) and pd.isna(val2):
@@ -222,7 +214,7 @@ class ExcelComparator:
                     elif pd.isna(val1) and not pd.isna(val2):
                         cell_diffs.append(CellDiff(
                             sheet_name=sheet_name,
-                            row=row1.name + 1,  # Excel实际行号（index+1）
+                            row=excel_row_num,
                             column=str(col),
                             old_value=None,
                             new_value=val2
@@ -230,7 +222,7 @@ class ExcelComparator:
                     elif not pd.isna(val1) and pd.isna(val2):
                         cell_diffs.append(CellDiff(
                             sheet_name=sheet_name,
-                            row=row1.name + 1,
+                            row=excel_row_num,
                             column=str(col),
                             old_value=val1,
                             new_value=None
@@ -238,92 +230,80 @@ class ExcelComparator:
                     elif val1 != val2:
                         cell_diffs.append(CellDiff(
                             sheet_name=sheet_name,
-                            row=row1.name + 1,
+                            row=excel_row_num,
                             column=str(col),
                             old_value=val1,
                             new_value=val2
                         ))
                 return cell_diffs
 
-            while i < len1 and j < len2:
-                row1 = df1_common.iloc[i]
-                row2 = df2_common.iloc[j]
+            # 遍历所有操作序列
+            for op, i1, i2, j1, j2 in matcher.get_opcodes():
+                # op: 操作类型
+                # i1, i2: file1的行索引范围 [i1, i2)
+                # j1, j2: file2的行索引范围 [j1, j2)
 
-                # 判断两行是否相等
-                if rows_equal(row1, row2, common_cols):
-                    # 完全匹配，继续下一行
-                    i += 1
-                    j += 1
-                else:
-                    # 不匹配，向前查找对齐点
-                    found_align = False
+                if op == 'equal':
+                    # 完全相同的行，无需记录
+                    continue
 
-                    # 检查文件2中是否新增了行（file2[j+offset] 与 file1[i] 匹配）
-                    for offset in range(1, max_lookahead + 1):
-                        if j + offset < len2:
-                            if rows_equal(row1, df2_common.iloc[j + offset], common_cols):
-                                # 发现新增行
-                                for k in range(offset):
-                                    row_diffs.append(RowDiff(
-                                        sheet_name=sheet_name,
-                                        row_index=j + k + 1,  # Excel实际行号
-                                        diff_type='added',
-                                        new_data=df2_common.iloc[j + k].to_dict()
-                                    ))
-                                j += offset
-                                found_align = True
-                                break
+                elif op == 'delete':
+                    # file1中删除了 [i1, i2) 的行
+                    for idx in range(i1, i2):
+                        row_diffs.append(RowDiff(
+                            sheet_name=sheet_name,
+                            row_index=idx + 1,  # Excel实际行号（从1开始）
+                            diff_type='deleted',
+                            old_data=df1_common.iloc[idx].to_dict()
+                        ))
 
-                    # 检查文件1中是否删除了行（file1[i+offset] 与 file2[j] 匹配）
-                    if not found_align:
-                        for offset in range(1, max_lookahead + 1):
-                            if i + offset < len1:
-                                if rows_equal(df1_common.iloc[i + offset], row2, common_cols):
-                                    # 发现删除行
-                                    for k in range(offset):
-                                        row_diffs.append(RowDiff(
-                                            sheet_name=sheet_name,
-                                            row_index=i + k + 1,  # Excel实际行号
-                                            diff_type='deleted',
-                                            old_data=df1_common.iloc[i + k].to_dict()
-                                        ))
-                                    i += offset
-                                    found_align = True
-                                    break
+                elif op == 'insert':
+                    # file2中新增了 [j1, j2) 的行
+                    for idx in range(j1, j2):
+                        row_diffs.append(RowDiff(
+                            sheet_name=sheet_name,
+                            row_index=idx + 1,  # Excel实际行号
+                            diff_type='added',
+                            new_data=df2_common.iloc[idx].to_dict()
+                        ))
 
-                    # 找不到对齐点，标记为修改
-                    if not found_align:
-                        cell_diffs = compare_cells(row1, row2, common_cols)
+                elif op == 'replace':
+                    # [i1, i2) 的行被替换为 [j1, j2) 的行
+                    # 取较小的长度进行对比
+                    min_len = min(i2 - i1, j2 - j1)
+                    for k in range(min_len):
+                        row1 = df1_common.iloc[i1 + k]
+                        row2 = df2_common.iloc[j1 + k]
+                        excel_row_num = i1 + k + 1  # 使用file1的行号
+
+                        cell_diffs = compare_cells(row1, row2, excel_row_num)
                         if cell_diffs:
                             row_diffs.append(RowDiff(
                                 sheet_name=sheet_name,
-                                row_index=i + 1,  # Excel实际行号
+                                row_index=excel_row_num,
                                 diff_type='modified',
                                 old_data=row1.to_dict(),
                                 new_data=row2.to_dict(),
                                 cell_diffs=cell_diffs
                             ))
-                        i += 1
-                        j += 1
 
-            # 处理剩余行
-            while i < len1:
-                row_diffs.append(RowDiff(
-                    sheet_name=sheet_name,
-                    row_index=i + 1,
-                    diff_type='deleted',
-                    old_data=df1_common.iloc[i].to_dict()
-                ))
-                i += 1
+                    # 处理file1多出的行（删除）
+                    for idx in range(i1 + min_len, i2):
+                        row_diffs.append(RowDiff(
+                            sheet_name=sheet_name,
+                            row_index=idx + 1,
+                            diff_type='deleted',
+                            old_data=df1_common.iloc[idx].to_dict()
+                        ))
 
-            while j < len2:
-                row_diffs.append(RowDiff(
-                    sheet_name=sheet_name,
-                    row_index=j + 1,
-                    diff_type='added',
-                    new_data=df2_common.iloc[j].to_dict()
-                ))
-                j += 1
+                    # 处理file2多出的行（新增）
+                    for idx in range(j1 + min_len, j2):
+                        row_diffs.append(RowDiff(
+                            sheet_name=sheet_name,
+                            row_index=idx + 1,
+                            diff_type='added',
+                            new_data=df2_common.iloc[idx].to_dict()
+                        ))
 
         # Only return SheetDiff if there are differences
         if column_diffs or row_diffs:
