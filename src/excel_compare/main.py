@@ -4,8 +4,16 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import tkinterdnd2 as tkdnd
 import os
-from .comparator import ExcelComparator
-from .diff_view import DiffViewer
+import sys
+
+# Handle both package and standalone execution
+try:
+    from .comparator import ExcelComparator
+    from .diff_view import DiffViewer
+except ImportError:
+    # Fallback for PyInstaller standalone execution
+    from excel_compare.comparator import ExcelComparator
+    from excel_compare.diff_view import DiffViewer
 
 
 class ExcelCompareApp:
