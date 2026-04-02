@@ -295,6 +295,9 @@ class ExcelComparator:
                             cell_diffs=cell_diffs
                         ))
 
+            # 按行号排序，使显示更有序
+            row_diffs.sort(key=lambda x: x.row_index)
+
         # Only return SheetDiff if there are differences
         if column_diffs or row_diffs:
             return SheetDiff(
