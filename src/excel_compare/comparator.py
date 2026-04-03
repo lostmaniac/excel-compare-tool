@@ -74,38 +74,54 @@ class ExcelComparator:
         self.sheet_names_2 = []
 
     def load_files(self) -> None:
-        """Load both Excel files with original row and column positions."""
+        """Load both Excel files with original row and column positions using openpyxl."""
+        from openpyxl.cell import MergedCell
+        import numpy as np
+
+        def read_sheet_data(wb, sheet_name, file_path):
+            """使用openpyxl读取sheet的所有数据，确保数据一致性"""
+            sheet = wb[sheet_name]
+            max_row = sheet.max_row
+            max_col = sheet.max_column
+
+            # 如果sheet没有数据或列数异常，跳过
+            if max_row < 1 or max_col < 1:
+                print(f'警告: sheet {sheet_name} 没有有效数据，跳过')
+                return pd.DataFrame()
+
+            # 创建数据字典 {(row, col): value}
+            data_dict = {}
+
+            for row in range(1, max_row + 1):
+                for col in range(1, max_col + 1):
+                    cell = sheet.cell(row=row, column=col)
+                    data_dict[(row, col)] = cell.value if cell.value is not None else np.nan
+
+            # 创建DataFrame
+            df = pd.DataFrame.from_dict(data_dict, orient='index')
+            df.index = range(1, len(df) + 1)
+
+            # 生成列名
+            column_names = [get_column_letter(i) for i in range(max_col)]
+            df.columns = column_names
+
+            return df
+
         # Load file1
         wb1 = load_workbook(self.file1_path, read_only=True, data_only=True)
         self.sheet_names_1 = wb1.sheetnames
         for sheet in self.sheet_names_1:
-            # Read all data without header
-            df = pd.read_excel(self.file1_path, sheet_name=sheet, header=None)
-
-            # Generate column names A, B, C, ..., Z, AA, AB, etc.
-            column_names = [get_column_letter(i+1) for i in range(df.shape[1])]
-            df.columns = column_names
-
-            # Set row numbers as index (Excel row numbers, starting from 1)
-            df.index = range(1, len(df) + 1)
-
-            self.df1_dict[sheet] = df
+            df = read_sheet_data(wb1, sheet, self.file1_path)
+            if df is not None and not df.empty:
+                self.df1_dict[sheet] = df
 
         # Load file2
         wb2 = load_workbook(self.file2_path, read_only=True, data_only=True)
         self.sheet_names_2 = wb2.sheetnames
         for sheet in self.sheet_names_2:
-            # Read all data without header
-            df = pd.read_excel(self.file2_path, sheet_name=sheet, header=None)
-
-            # Generate column names A, B, C, ..., Z, AA, AB, etc.
-            column_names = [get_column_letter(i+1) for i in range(df.shape[1])]
-            df.columns = column_names
-
-            # Set row numbers as index (Excel row numbers, starting from 1)
-            df.index = range(1, len(df) + 1)
-
-            self.df2_dict[sheet] = df
+            df = read_sheet_data(wb2, sheet, self.file2_path)
+            if df is not None and not df.empty:
+                self.df2_dict[sheet] = df
 
     def compare(self) -> CompareResult:
         """
