@@ -212,7 +212,7 @@ class DiffViewer(ttk.Frame):
         tree.column('type', width=50, minwidth=50, anchor='center')
         tree.column('row', width=50, minwidth=50, anchor='center')
         tree.column('column', width=50, minwidth=50, anchor='w')
-        tree.column('details', width=300, minwidth=150, stretch=True, anchor='w')
+        tree.column('details', width=800, minwidth=200, stretch=True, anchor='w')
 
         # 添加滚动条
         vsb = ttk.Scrollbar(parent, orient="vertical", command=tree.yview)
