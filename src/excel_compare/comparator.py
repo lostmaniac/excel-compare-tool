@@ -86,7 +86,6 @@ class ExcelComparator:
 
             # 如果sheet没有数据或列数异常，跳过
             if max_row < 1 or max_col < 1:
-                print(f'警告: sheet {sheet_name} 没有有效数据，跳过')
                 return pd.DataFrame()
 
             # 创建数据字典 {(row, col): value}
@@ -102,7 +101,7 @@ class ExcelComparator:
             df.index = range(1, len(df) + 1)
 
             # 生成列名
-            column_names = [get_column_letter(i) for i in range(max_col)]
+            column_names = [get_column_letter(i) for i in range(1, max_col + 1)]
             df.columns = column_names
 
             return df
