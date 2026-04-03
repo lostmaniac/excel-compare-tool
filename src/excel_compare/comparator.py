@@ -216,6 +216,9 @@ class ExcelComparator:
             rows_by_name1 = {}  # {场所名称: (行号, 行数据)}
             for excel_row_num in df1_common.index:
                 row_data = df1_common.loc[excel_row_num]
+                # 跳过空行
+                if self._is_empty_row(row_data.values):
+                    continue
                 site_name = row_data['B']
                 if pd.notna(site_name) and site_name != '' and str(site_name).strip() != '':
                     rows_by_name1[str(site_name).strip()] = (excel_row_num, row_data)
@@ -224,6 +227,9 @@ class ExcelComparator:
             rows_by_name2 = {}  # {场所名称: (行号, 行数据)}
             for excel_row_num in df2_common.index:
                 row_data = df2_common.loc[excel_row_num]
+                # 跳过空行
+                if self._is_empty_row(row_data.values):
+                    continue
                 site_name = row_data['B']
                 if pd.notna(site_name) and site_name != '' and str(site_name).strip() != '':
                     rows_by_name2[str(site_name).strip()] = (excel_row_num, row_data)
@@ -241,31 +247,30 @@ class ExcelComparator:
                         continue
                     val1 = row1[col]
                     val2 = row2[col]
-                    if pd.isna(val1) and pd.isna(val2):
+
+                    # 转换为字符串进行比较（避免类型差异导致的问题）
+                    def normalize_value(v):
+                        if pd.isna(v):
+                            return None
+                        if v is None:
+                            return None
+                        # 移除前后空格
+                        s = str(v).strip()
+                        # 如果是空字符串，视为None
+                        return None if s == '' else s
+
+                    norm_val1 = normalize_value(val1)
+                    norm_val2 = normalize_value(val2)
+
+                    if norm_val1 == norm_val2:
                         continue
-                    elif pd.isna(val1) and not pd.isna(val2):
+                    else:
                         cell_diffs.append(CellDiff(
                             sheet_name=sheet_name,
                             row=excel_row_num2,
                             column=str(col),
-                            old_value=None,
-                            new_value=val2
-                        ))
-                    elif not pd.isna(val1) and pd.isna(val2):
-                        cell_diffs.append(CellDiff(
-                            sheet_name=sheet_name,
-                            row=excel_row_num2,
-                            column=str(col),
-                            old_value=val1,
-                            new_value=None
-                        ))
-                    elif val1 != val2:
-                        cell_diffs.append(CellDiff(
-                            sheet_name=sheet_name,
-                            row=excel_row_num2,
-                            column=str(col),
-                            old_value=val1,
-                            new_value=val2
+                            old_value=norm_val1,
+                            new_value=norm_val2
                         ))
                 return cell_diffs
 
