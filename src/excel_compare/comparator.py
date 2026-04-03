@@ -2,10 +2,8 @@
 
 from dataclasses import dataclass
 from typing import List, Dict, Optional, Any
-import pandas as pd
 from openpyxl import load_workbook
 from openpyxl.utils import get_column_letter
-import difflib
 
 
 @dataclass
@@ -68,59 +66,54 @@ class ExcelComparator:
         """
         self.file1_path = file1_path
         self.file2_path = file2_path
-        self.df1_dict = {}
-        self.df2_dict = {}
+        # 使用纯openpyxl：{sheet_name: {(row, col): value}}
+        self.data1_dict = {}
+        self.data2_dict = {}
         self.sheet_names_1 = []
         self.sheet_names_2 = []
 
     def load_files(self) -> None:
-        """Load both Excel files with original row and column positions using openpyxl."""
-        from openpyxl.cell import MergedCell
-        import numpy as np
+        """Load both Excel files using pure openpyxl - returns dictionary of cell values."""
 
-        def read_sheet_data(wb, sheet_name, file_path):
-            """使用openpyxl读取sheet的所有数据，确保数据一致性"""
+        def read_sheet_data(wb, sheet_name):
+            """使用openpyxl读取sheet的所有数据，返回字典格式"""
             sheet = wb[sheet_name]
             max_row = sheet.max_row
             max_col = sheet.max_column
 
             # 如果sheet没有数据或列数异常，跳过
             if max_row < 1 or max_col < 1:
-                return pd.DataFrame()
+                return None
 
-            # 创建数据字典 {(row, col): value}
+            # 创建数据字典 {(row, col): value} - col为列字母
             data_dict = {}
 
             for row in range(1, max_row + 1):
-                for col in range(1, max_col + 1):
-                    cell = sheet.cell(row=row, column=col)
-                    data_dict[(row, col)] = cell.value if cell.value is not None else np.nan
+                for col_idx in range(1, max_col + 1):
+                    col_letter = get_column_letter(col_idx)
+                    cell = sheet.cell(row=row, column=col_idx)
+                    value = cell.value if cell.value is not None else None
+                    data_dict[(row, col_letter)] = value
 
-            # 创建DataFrame
-            df = pd.DataFrame.from_dict(data_dict, orient='index')
-            df.index = range(1, len(df) + 1)
-
-            # 生成列名
-            column_names = [get_column_letter(i) for i in range(1, max_col + 1)]
-            df.columns = column_names
-
-            return df
+            return data_dict
 
         # Load file1
         wb1 = load_workbook(self.file1_path, read_only=True, data_only=True)
         self.sheet_names_1 = wb1.sheetnames
         for sheet in self.sheet_names_1:
-            df = read_sheet_data(wb1, sheet, self.file1_path)
-            if df is not None and not df.empty:
-                self.df1_dict[sheet] = df
+            data = read_sheet_data(wb1, sheet)
+            if data:
+                self.data1_dict[sheet] = data
+        wb1.close()
 
         # Load file2
         wb2 = load_workbook(self.file2_path, read_only=True, data_only=True)
         self.sheet_names_2 = wb2.sheetnames
         for sheet in self.sheet_names_2:
-            df = read_sheet_data(wb2, sheet, self.file2_path)
-            if df is not None and not df.empty:
-                self.df2_dict[sheet] = df
+            data = read_sheet_data(wb2, sheet)
+            if data:
+                self.data2_dict[sheet] = data
+        wb2.close()
 
     def compare(self) -> CompareResult:
         """
@@ -163,10 +156,13 @@ class ExcelComparator:
             summary=summary
         )
 
-    def _is_empty_row(self, row_data):
-        """判断是否为空行（所有值都是NaN、None或空字符串）"""
-        for val in row_data:
-            if pd.notna(val) and val != '' and str(val).strip() != '':
+    def _is_empty_row(self, data_dict: Dict, row: int, max_col: int) -> bool:
+        """判断是否为空行（所有值都是None或空字符串）"""
+        for col_idx in range(1, max_col + 1):
+            col_letter = get_column_letter(col_idx)
+            value = data_dict.get((row, col_letter))
+            # 只要有非空值，就不是空行
+            if value is not None and str(value).strip() != '':
                 return False
         return True
 
@@ -180,16 +176,35 @@ class ExcelComparator:
         Returns:
             SheetDiff object if differences found, None otherwise
         """
-        df1 = self.df1_dict[sheet_name]
-        df2 = self.df2_dict[sheet_name]
+        data1 = self.data1_dict[sheet_name]
+        data2 = self.data2_dict[sheet_name]
 
         column_diffs = []
         row_diffs = []
 
-        # Compare columns
-        cols1 = set(df1.columns)
-        cols2 = set(df2.columns)
+        # 获取所有行号和列号
+        rows1 = {row for row, _ in data1.keys()}
+        rows2 = {row for row, _ in data2.keys()}
+        cols1 = {col for _, col in data1.keys()}
+        cols2 = {col for _, col in data2.keys()}
 
+        max_row1 = max(rows1) if rows1 else 0
+        max_row2 = max(rows2) if rows2 else 0
+
+        # 计算最大列号（将列字母转换为数字）
+        def col_letter_to_num(col_letter):
+            """将列字母转换为数字（A=1, B=2, ...）"""
+            num = 0
+            for char in col_letter:
+                num = num * 26 + (ord(char.upper()) - ord('A') + 1)
+            return num
+
+        max_col1 = max([col_letter_to_num(col) for _, col in data1.keys()]) if data1 else 0
+        max_col2 = max([col_letter_to_num(col) for _, col in data2.keys()]) if data2 else 0
+        max_col = max(max_col1, max_col2)
+
+        # Compare columns
+        all_cols = cols1 | cols2
         for col in cols1 - cols2:
             column_diffs.append(ColumnDiff(
                 sheet_name=sheet_name,
@@ -204,75 +219,50 @@ class ExcelComparator:
                 diff_type='added'
             ))
 
-        # Only compare rows if there are common columns
-        common_cols = list(cols1 & cols2)
-        if common_cols and 'B' in common_cols:  # 需要B列（场所名称）作为唯一标识符进行匹配
-            # 使用原始索引（Excel行号）进行比较
-            df1_common = df1[common_cols]
-            df2_common = df2[common_cols]
+        # Only compare rows if there are common columns and B列 exists
+        common_cols = cols1 & cols2
+        if common_cols and 'B' in common_cols:
+            # 使用B列（场所名称）作为唯一标识符进行匹配
+            # 关键：通过场所名称匹配，而不是按行号，这样可以避免"增加行导致错位"的问题
 
-            # 基于场所名称（B列）进行匹配，而不是按行顺序比较
             # 收集file1中所有有效行（有场所名称的行）
-            rows_by_name1 = {}  # {场所名称: (行号, 行数据)}
-            for excel_row_num in df1_common.index:
-                row_data = df1_common.loc[excel_row_num]
+            rows_by_name1 = {}  # {场所名称: (行号, 行数据字典)}
+            for row in range(1, max_row1 + 1):
                 # 跳过空行
-                if self._is_empty_row(row_data.values):
+                if self._is_empty_row(data1, row, max_col):
                     continue
-                site_name = row_data['B']
-                if pd.notna(site_name) and site_name != '' and str(site_name).strip() != '':
-                    rows_by_name1[str(site_name).strip()] = (excel_row_num, row_data)
+                site_name = data1.get((row, 'B'))
+                if site_name is not None and str(site_name).strip() != '':
+                    # 收集该行的所有列数据
+                    row_data = {}
+                    for col in common_cols:
+                        row_data[col] = data1.get((row, col))
+                    rows_by_name1[str(site_name).strip()] = (row, row_data)
 
             # 收集file2中所有有效行（有场所名称的行）
-            rows_by_name2 = {}  # {场所名称: (行号, 行数据)}
-            for excel_row_num in df2_common.index:
-                row_data = df2_common.loc[excel_row_num]
+            rows_by_name2 = {}  # {场所名称: (行号, 行数据字典)}
+            for row in range(1, max_row2 + 1):
                 # 跳过空行
-                if self._is_empty_row(row_data.values):
+                if self._is_empty_row(data2, row, max_col):
                     continue
-                site_name = row_data['B']
-                if pd.notna(site_name) and site_name != '' and str(site_name).strip() != '':
-                    rows_by_name2[str(site_name).strip()] = (excel_row_num, row_data)
+                site_name = data2.get((row, 'B'))
+                if site_name is not None and str(site_name).strip() != '':
+                    # 收集该行的所有列数据
+                    row_data = {}
+                    for col in common_cols:
+                        row_data[col] = data2.get((row, col))
+                    rows_by_name2[str(site_name).strip()] = (row, row_data)
 
             # 获取所有场所名称
             all_names = set(rows_by_name1.keys()) | set(rows_by_name2.keys())
 
-            # 对比单元格的函数
-            def compare_cells(row1, row2, excel_row_num2):
-                """对比两行的单元格差异"""
-                cell_diffs = []
-                for col in common_cols:
-                    # 跳过序号列（A列）和场所名称列（B列）
-                    if col == 'A' or col == 'B':
-                        continue
-                    val1 = row1[col]
-                    val2 = row2[col]
-
-                    # 转换为字符串进行比较（避免类型差异导致的问题）
-                    def normalize_value(v):
-                        if pd.isna(v):
-                            return None
-                        if v is None:
-                            return None
-                        # 移除前后空格
-                        s = str(v).strip()
-                        # 如果是空字符串，视为None
-                        return None if s == '' else s
-
-                    norm_val1 = normalize_value(val1)
-                    norm_val2 = normalize_value(val2)
-
-                    if norm_val1 == norm_val2:
-                        continue
-                    else:
-                        cell_diffs.append(CellDiff(
-                            sheet_name=sheet_name,
-                            row=excel_row_num2,
-                            column=str(col),
-                            old_value=norm_val1,
-                            new_value=norm_val2
-                        ))
-                return cell_diffs
+            # 值标准化函数
+            def normalize_value(v):
+                """标准化单元格值"""
+                if v is None:
+                    return None
+                s = str(v).strip()
+                return None if s == '' else s
 
             # 按场所名称排序遍历
             for site_name in sorted(all_names):
@@ -280,23 +270,23 @@ class ExcelComparator:
                 in_file2 = site_name in rows_by_name2
 
                 if not in_file1 and in_file2:
-                    # 新增的行
+                    # 新增的行 - 使用file2的行号
                     excel_row_num, row_data = rows_by_name2[site_name]
                     row_diffs.append(RowDiff(
                         sheet_name=sheet_name,
                         row_index=excel_row_num,
                         diff_type='added',
-                        new_data=row_data.to_dict()
+                        new_data=row_data
                     ))
 
                 elif in_file1 and not in_file2:
-                    # 删除的行
+                    # 删除的行 - 使用file1的行号
                     excel_row_num, row_data = rows_by_name1[site_name]
                     row_diffs.append(RowDiff(
                         sheet_name=sheet_name,
                         row_index=excel_row_num,
                         diff_type='deleted',
-                        old_data=row_data.to_dict()
+                        old_data=row_data
                     ))
 
                 elif in_file1 and in_file2:
@@ -304,14 +294,35 @@ class ExcelComparator:
                     excel_row_num1, row_data1 = rows_by_name1[site_name]
                     excel_row_num2, row_data2 = rows_by_name2[site_name]
 
-                    cell_diffs = compare_cells(row_data1, row_data2, excel_row_num2)
+                    # 对比单元格差异
+                    cell_diffs = []
+                    for col in common_cols:
+                        # 跳过序号列（A列）和场所名称列（B列）
+                        if col == 'A' or col == 'B':
+                            continue
+
+                        val1 = row_data1.get(col)
+                        val2 = row_data2.get(col)
+
+                        norm_val1 = normalize_value(val1)
+                        norm_val2 = normalize_value(val2)
+
+                        if norm_val1 != norm_val2:
+                            cell_diffs.append(CellDiff(
+                                sheet_name=sheet_name,
+                                row=excel_row_num2,  # 使用file2的行号
+                                column=str(col),
+                                old_value=norm_val1,
+                                new_value=norm_val2
+                            ))
+
                     if cell_diffs:
                         row_diffs.append(RowDiff(
                             sheet_name=sheet_name,
                             row_index=excel_row_num2,  # 使用file2的行号
                             diff_type='modified',
-                            old_data=row_data1.to_dict(),
-                            new_data=row_data2.to_dict(),
+                            old_data=row_data1,
+                            new_data=row_data2,
                             cell_diffs=cell_diffs
                         ))
 
