@@ -76,26 +76,18 @@ class ExcelComparator:
         """Load both Excel files using pure openpyxl - returns dictionary of cell values."""
 
         def read_sheet_data(wb, sheet_name):
-            """使用openpyxl读取sheet的所有数据，返回字典格式"""
+            """使用openpyxl读取sheet的所有数据，只存储非空单元格"""
             sheet = wb[sheet_name]
-            max_row = sheet.max_row
-            max_col = sheet.max_column
-
-            # 如果sheet没有数据或列数异常，跳过
-            if max_row < 1 or max_col < 1:
-                return None
-
-            # 创建数据字典 {(row, col): value} - col为列字母
             data_dict = {}
 
-            for row in range(1, max_row + 1):
-                for col_idx in range(1, max_col + 1):
-                    col_letter = get_column_letter(col_idx)
-                    cell = sheet.cell(row=row, column=col_idx)
-                    value = cell.value if cell.value is not None else None
-                    data_dict[(row, col_letter)] = value
+            # 动态遍历所有有数据的单元格，不依赖max_column
+            for row_cells in sheet.iter_rows():
+                for cell in row_cells:
+                    if cell.value is not None:
+                        col_letter = get_column_letter(cell.column)
+                        data_dict[(cell.row, col_letter)] = cell.value
 
-            return data_dict
+            return data_dict if data_dict else None
 
         # Load file1
         wb1 = load_workbook(self.file1_path, read_only=True, data_only=True)
@@ -156,13 +148,10 @@ class ExcelComparator:
             summary=summary
         )
 
-    def _is_empty_row(self, data_dict: Dict, row: int, max_col: int) -> bool:
-        """判断是否为空行（所有值都是None或空字符串）"""
-        for col_idx in range(1, max_col + 1):
-            col_letter = get_column_letter(col_idx)
-            value = data_dict.get((row, col_letter))
-            # 只要有非空值，就不是空行
-            if value is not None and str(value).strip() != '':
+    def _is_empty_row(self, data_dict: Dict, row: int) -> bool:
+        """判断是否为空行（没有任何非空数据）"""
+        for (r, col), value in data_dict.items():
+            if r == row and value is not None and str(value).strip() != '':
                 return False
         return True
 
@@ -219,23 +208,24 @@ class ExcelComparator:
                 diff_type='added'
             ))
 
-        # Only compare rows if there are common columns and B列 exists
+        # Only compare rows if there are common columns and C列 exists
         common_cols = cols1 & cols2
-        if common_cols and 'B' in common_cols:
-            # 使用B列（场所名称）作为唯一标识符进行匹配
+        all_compare_cols = cols1 | cols2  # 所有列，用于完整对比
+        if common_cols and 'C' in common_cols:
+            # 使用C列（场所名称）作为唯一标识符进行匹配
             # 关键：通过场所名称匹配，而不是按行号，这样可以避免"增加行导致错位"的问题
 
             # 收集file1中所有有效行（有场所名称的行）
             rows_by_name1 = {}  # {场所名称: (行号, 行数据字典)}
             for row in range(1, max_row1 + 1):
                 # 跳过空行
-                if self._is_empty_row(data1, row, max_col):
+                if self._is_empty_row(data1, row):
                     continue
-                site_name = data1.get((row, 'B'))
+                site_name = data1.get((row, 'C'))
                 if site_name is not None and str(site_name).strip() != '':
-                    # 收集该行的所有列数据
+                    # 收集该行的所有列数据（包括两个文件的所有列）
                     row_data = {}
-                    for col in common_cols:
+                    for col in all_compare_cols:
                         row_data[col] = data1.get((row, col))
                     rows_by_name1[str(site_name).strip()] = (row, row_data)
 
@@ -243,13 +233,13 @@ class ExcelComparator:
             rows_by_name2 = {}  # {场所名称: (行号, 行数据字典)}
             for row in range(1, max_row2 + 1):
                 # 跳过空行
-                if self._is_empty_row(data2, row, max_col):
+                if self._is_empty_row(data2, row):
                     continue
-                site_name = data2.get((row, 'B'))
+                site_name = data2.get((row, 'C'))
                 if site_name is not None and str(site_name).strip() != '':
-                    # 收集该行的所有列数据
+                    # 收集该行的所有列数据（包括两个文件的所有列）
                     row_data = {}
-                    for col in common_cols:
+                    for col in all_compare_cols:
                         row_data[col] = data2.get((row, col))
                     rows_by_name2[str(site_name).strip()] = (row, row_data)
 
@@ -294,11 +284,11 @@ class ExcelComparator:
                     excel_row_num1, row_data1 = rows_by_name1[site_name]
                     excel_row_num2, row_data2 = rows_by_name2[site_name]
 
-                    # 对比单元格差异
+                    # 对比所有列的单元格差异
                     cell_diffs = []
-                    for col in common_cols:
-                        # 跳过序号列（A列）和场所名称列（B列）
-                        if col == 'A' or col == 'B':
+                    for col in all_compare_cols:
+                        # 跳过序号列（A列）和场所名称列（C列）
+                        if col == 'A' or col == 'C':
                             continue
 
                         val1 = row_data1.get(col)

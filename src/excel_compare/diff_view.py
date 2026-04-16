@@ -242,7 +242,7 @@ class DiffViewer(ttk.Frame):
                     tree.item(item_id, tags=('modified',))
             elif row_diff.diff_type in ['added', 'deleted']:
                 # 新增或删除的行 - 显示场所名称
-                site_name = row_diff.new_data.get('B') if row_diff.new_data else row_diff.old_data.get('B', '')
+                site_name = row_diff.new_data.get('C') if row_diff.new_data else row_diff.old_data.get('C', '')
                 seq_num = row_diff.new_data.get('A') if row_diff.new_data else row_diff.old_data.get('A', '')
                 details = f"序号{seq_num}: {site_name}"
                 item_id = tree.insert('', 'end', values=(type_text, row_num, "-", details))
